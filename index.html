@@ -96,8 +96,9 @@
       <span class="note" id="countNote" style="margin-top:0"></span>
       <button class="linklike" id="clearBtn">Quitar todas</button>
     </div>
+    <p class="note" id="photoWarn" hidden></p>
     <p class="note">Las fotos se eligen desde tu fototeca, se comprimen y se guardan en este iPhone:
-      no se suben ni se comparten con nadie. Si borras los datos de este sitio en Safari, habría que elegirlas otra vez.</p>
+      no se suben ni se comparten con nadie. Si se borran los datos de este sitio (en Safari o si el iPhone necesita espacio), habría que elegirlas otra vez.</p>
     <p class="note" id="storageNote" hidden>Este navegador no permite guardar las fotos entre aperturas;
       se mantendrán mientras la página siga abierta.</p>
   </div>
@@ -189,9 +190,9 @@
       tx.oncomplete = function () {
         var keys = keysReq.result;
         var vals = valsReq.result;
-        resolve(vals.map(function (blob, i) { return { id: String(keys[i]), url: URL.createObjectURL(blob) }; }));
+        resolve({ ok: true, items: vals.map(function (blob, i) { return { id: String(keys[i]), url: URL.createObjectURL(blob) }; }) });
       };
-      tx.onerror = function () { resolve([]); };
+      tx.onerror = function () { resolve({ ok: false, items: [] }); };
     });
   }
 
@@ -253,21 +254,28 @@
     pickBtn.disabled = true;
     pickBtn.textContent = 'Preparando fotos…';
     var chain = Promise.resolve();
+    var failedReads = 0;
+    var failedSaves = 0;
     Array.prototype.forEach.call(files, function (file) {
       chain = chain.then(function () {
         return shrinkPhoto(file).then(function (blob) {
           var id = 'foto-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-          var save = db ? idbPut(id, blob) : Promise.resolve();
-          return save.then(function () {
-            photos.push({ id: id, url: URL.createObjectURL(blob) });
-          });
-        }).catch(function () { /* foto no usable: se omite */ });
+          photos.push({ id: id, url: URL.createObjectURL(blob) });
+          if (!db) return;
+          return idbPut(id, blob).catch(function () { failedSaves++; });
+        }).catch(function () { failedReads++; });
       });
     });
     chain.then(function () {
       pickBtn.disabled = false;
       renderPhotos();
       picker.value = '';
+      var warn = document.getElementById('photoWarn');
+      var msgs = [];
+      if (failedReads > 0) msgs.push(failedReads + (failedReads === 1 ? ' foto no se pudo leer' : ' fotos no se pudieron leer') + ' (formato no compatible).');
+      if (failedSaves > 0) msgs.push(failedSaves + (failedSaves === 1 ? ' foto no se pudo guardar de forma permanente' : ' fotos no se pudieron guardar de forma permanente') + ' (quizá el iPhone está lleno): se mantendrá mientras la página siga abierta.');
+      warn.textContent = msgs.join(' ');
+      warn.hidden = msgs.length === 0;
     });
   });
 
@@ -286,8 +294,16 @@
       document.getElementById('storageNote').hidden = false;
       return;
     }
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().then(function () {}).catch(function () {});
+    }
     idbAll().then(function (loaded) {
-      photos = loaded;
+      photos = loaded.items;
+      if (!loaded.ok) {
+        var warn = document.getElementById('photoWarn');
+        warn.textContent = 'No se pudieron leer las fotos guardadas en este iPhone. Si elegiste fotos antes y no aparecen, el iPhone pudo borrar los datos del sitio por falta de espacio.';
+        warn.hidden = false;
+      }
       renderPhotos();
     });
   });
