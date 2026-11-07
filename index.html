@@ -40,6 +40,20 @@
   .linklike { background: none; border: none; color: #c9c7c2; font: inherit; font-size: 13px;
     text-decoration: underline; cursor: pointer; padding: 6px; min-height: 44px; }
 
+
+  /* Lista de la compra */
+  .list-form { display: flex; gap: 10px; }
+  .list-form input { flex: 1 1 auto; min-width: 0; border: 1px solid #2a2a32; border-radius: 12px;
+    background: #101014; color: #f2f1ee; font: inherit; font-size: 16px; padding: 10px 14px; min-height: 44px; }
+  .list { list-style: none; margin: 12px 0 0; padding: 0; }
+  .list li { display: flex; align-items: center; gap: 10px; padding: 10px 4px;
+    border-top: 1px solid #2a2a32; min-height: 44px; }
+  .list li:first-child { border-top: none; }
+  .list .item-text { flex: 1 1 auto; font-size: 16px; cursor: pointer; overflow-wrap: anywhere; }
+  .list li.done .item-text { color: #6f6d68; text-decoration: line-through; }
+  .list .del { flex: 0 0 auto; background: none; border: none; color: #a7a5a0; font-size: 20px;
+    cursor: pointer; padding: 6px 10px; min-height: 44px; }
+
   /* Frame mode */
   .frame { position: fixed; inset: 0; z-index: 50; background: #000; display: none;
     flex-direction: column; align-items: center; justify-content: center; cursor: pointer;
@@ -63,7 +77,7 @@
 <body>
 <div class="wrap">
   <h1>Panel familiar</h1>
-  <p class="sub">Reloj y marco de fotos. Las fotos se guardan solo en este iPhone.</p>
+  <p class="sub">Reloj, marco de fotos y lista de la compra. Todo se guarda solo en este iPhone.</p>
 
   <div class="clock" aria-live="off">
     <div class="clock-time" id="clockTime">--:--</div>
@@ -86,6 +100,21 @@
       no se suben ni se comparten con nadie. Si borras los datos de este sitio en Safari, habría que elegirlas otra vez.</p>
     <p class="note" id="storageNote" hidden>Este navegador no permite guardar las fotos entre aperturas;
       se mantendrán mientras la página siga abierta.</p>
+  </div>
+
+  <div class="card">
+    <h2>Lista de la compra</h2>
+    <form class="list-form" id="listForm">
+      <input type="text" id="listInput" placeholder="Ej.: leche, pan, huevos" autocomplete="off" enterkeyhint="done">
+      <button class="btn btn-primary" type="submit">Añadir</button>
+    </form>
+    <ul class="list" id="listUl"></ul>
+    <div class="meta" id="listMeta" hidden>
+      <span class="note" id="listCount" style="margin-top:0"></span>
+      <button class="linklike" id="listClearDone">Quitar tachados</button>
+    </div>
+    <p class="note">Toca una cosa para tacharla. La lista se guarda solo en este iPhone:
+      no se sube ni se comparte con nadie.</p>
   </div>
 
   <p class="note">Para que la pantalla no se apague mientras usas el marco, la app pedirá mantenerla despierta al abrirlo.
@@ -262,6 +291,84 @@
       renderPhotos();
     });
   });
+
+  /* ---------- Lista de la compra (localStorage, solo este dispositivo) ---------- */
+  var LIST_KEY = 'panel-lista-v1';
+  var listItems = []; /* [{t, done}] */
+  var listUl = document.getElementById('listUl');
+  var listMeta = document.getElementById('listMeta');
+  var listCount = document.getElementById('listCount');
+  var listInput = document.getElementById('listInput');
+
+  function loadList() {
+    try {
+      var raw = localStorage.getItem(LIST_KEY);
+      var parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        listItems = parsed.filter(function (it) { return it && typeof it.t === 'string'; });
+      }
+    } catch (e) { listItems = []; }
+  }
+
+  function saveList() {
+    try { localStorage.setItem(LIST_KEY, JSON.stringify(listItems)); } catch (e) {}
+  }
+
+  function renderList() {
+    listUl.innerHTML = '';
+    listItems.forEach(function (it, i) {
+      var li = document.createElement('li');
+      if (it.done) li.className = 'done';
+      var span = document.createElement('span');
+      span.className = 'item-text';
+      span.textContent = it.t;
+      span.addEventListener('click', function () {
+        it.done = !it.done;
+        saveList();
+        renderList();
+      });
+      var del = document.createElement('button');
+      del.className = 'del';
+      del.type = 'button';
+      del.setAttribute('aria-label', 'Quitar ' + it.t);
+      del.textContent = '\u00d7';
+      del.addEventListener('click', function () {
+        listItems.splice(i, 1);
+        saveList();
+        renderList();
+      });
+      li.appendChild(span);
+      li.appendChild(del);
+      listUl.appendChild(li);
+    });
+    var pending = listItems.filter(function (it) { return !it.done; }).length;
+    var has = listItems.length > 0;
+    listMeta.hidden = !has;
+    if (has) {
+      listCount.textContent = pending === 0 ? 'Todo tachado.' :
+        pending + (pending === 1 ? ' cosa por comprar.' : ' cosas por comprar.');
+    }
+  }
+
+  document.getElementById('listForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var t = listInput.value.replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    listItems.push({ t: t, done: false });
+    listInput.value = '';
+    saveList();
+    renderList();
+    listInput.focus();
+  });
+
+  document.getElementById('listClearDone').addEventListener('click', function () {
+    listItems = listItems.filter(function (it) { return !it.done; });
+    saveList();
+    renderList();
+  });
+
+  loadList();
+  renderList();
 
   /* ---------- Modo marco + pantalla despierta ---------- */
   var frame = document.getElementById('frame');

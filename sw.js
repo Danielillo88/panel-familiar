@@ -1,4 +1,4 @@
-const CACHE = 'panel-familiar-v2';
+const CACHE = 'panel-familiar-v3';
 const ASSETS = [
   './manifest.webmanifest',
   './icon-192.png',
